@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+
+import subprocess
+from tabulate import tabulate
+import re
+
+headers = ['Hardware Port', 'IP Address', 'Device', 'MAC Address']
+
+ports = subprocess.check_output("networksetup -listallhardwareports", shell=True).decode('utf-8')
+
+pattern = 'Hardware Port: (.*)\nDevice: (.*)\nEthernet Address: (.*)\n\n'
+matches = re.finditer(pattern, ports, re.MULTILINE)
+
+table = []
+for match in matches:
+	row = list(match.groups())
+	try:
+		ip = subprocess.check_output("ipconfig getifaddr {}".format(row[1]), shell=True).decode('utf-8').strip()
+	except subprocess.CalledProcessError as e:
+		ip = ""
+	row.insert(1, ip)
+	table.append(row)
+
+print(tabulate(sorted(table), headers=headers, tablefmt='fancy_grid'))
