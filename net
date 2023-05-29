@@ -4,21 +4,48 @@ import subprocess
 from tabulate import tabulate
 import re
 
-headers = ['Hardware Port', 'IP Address', 'Device', 'MAC Address']
+def linkspeed_from_media_string(s):
+	# return a readable representation of the link speed
+	speed = ms.strip().split("(")[1].split('base')
+	match speed:
+		case ["10G", *rest]:
+			speed = "10GbE"
+		case ["1000", *rest]:
+			speed = "1GbE"
+		case [newspeed, *rest]:
+			speed = newspeed     # maybe this handles 2.5G, 25G, etc
+		case other:
+			speed = ""
+	return speed
+
+headers = ['Hardware Port', 'IP Address', 'Device', 'Speed', 'MAC Address']
 
 ports = subprocess.check_output("networksetup -listallhardwareports", shell=True).decode('utf-8')
 
 pattern = 'Hardware Port: (.*)\nDevice: (.*)\nEthernet Address: (.*)\n\n'
 matches = re.finditer(pattern, ports, re.MULTILINE)
 
-table = []
+services = {}
 for match in matches:
 	row = list(match.groups())
 	try:
-		ip = subprocess.check_output("ipconfig getifaddr {}".format(row[1]), shell=True).decode('utf-8').strip()
-	except subprocess.CalledProcessError as e:
+		ip = subprocess.check_output(f"ipconfig getifaddr {row[1]}", shell=True).decode('utf-8').strip()
+		ms = subprocess.check_output(f"ifconfig {row[1]} | grep media", shell=True).decode('utf-8')
+		speed = linkspeed_from_media_string(ms)
+	except subprocess.CalledProcessError:
 		ip = ""
+		speed = ""
+	except IndexError:
+		speed = ""
 	row.insert(1, ip)
-	table.append(row)
+	row.insert(3, speed)
+	services[row[2]] = row
 
-print(tabulate(sorted(table), headers=headers, tablefmt='fancy_grid'))
+table = []
+service_order = subprocess.check_output(f"networksetup -listnetworkserviceorder | grep Device", shell=True).decode('utf-8').strip()
+for line in service_order.split('\n'):
+	device = line[:-1].split(" ")[-1]
+	if device in services:
+		table.append(services[device])
+
+print(tabulate(table, headers=headers, tablefmt='fancy_grid'))
