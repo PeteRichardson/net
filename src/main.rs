@@ -1,4 +1,6 @@
 use regex::Regex;
+use std::collections::HashMap;
+use std::error::Error;
 use std::process::{Command, Stdio};
 use std::str;
 use tabled::{
@@ -16,6 +18,8 @@ struct HardwarePort {
     speed: String,
     #[tabled(rename = "MAC Address")]
     mac_address: String,
+    #[tabled(skip)]
+    service_order: u8,
 }
 
 fn get_ipaddr(device: &String) -> String {
@@ -33,35 +37,34 @@ fn get_ipaddr(device: &String) -> String {
 
 fn get_speed(device: &String, ip: &String) -> String {
     //ifconfig {device} | grep media
-    let ps_child = Command::new("ifconfig") // `ps` command...
+    let ifconfig_child = Command::new("ifconfig") // `ifconfig` command...
         .arg(device) // with argument `axww`...
         .stdout(Stdio::piped()) // of which we will pipe the output.
         .spawn() // Once configured, we actually spawn the command...
         .unwrap(); // and assert everything went right.
     let grep_child_one = Command::new("grep")
         .arg("media")
-        .stdin(Stdio::from(ps_child.stdout.unwrap())) // Pipe through.
+        .stdin(Stdio::from(ifconfig_child.stdout.unwrap())) // Pipe through.
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
     let output = grep_child_one.wait_with_output().unwrap();
     let mut result = str::from_utf8(&output.stdout).unwrap();
-
     if result.contains("10G") {
         result = "10GbE";
     } else if result.contains("1000") {
         result = "1GbE";
     } else {
-        result = "";
-        if !ip.is_empty() {
-            result = "auto?";
+        if !ip.is_empty() && result.contains("auto") {
+            result = "auto";
+        } else {
+            result = "";
         }
     }
     result.trim().to_string()
 }
 
-fn get_net_data() -> Vec<HardwarePort> {
-    let mut data: Vec<HardwarePort> = Vec::new();
+fn get_hw_ports(data: &mut Vec<HardwarePort>) -> Result<(), Box<dyn Error>> {
     let ports = Command::new("networksetup")
         .arg("-listallhardwareports")
         .output()
@@ -72,30 +75,110 @@ fn get_net_data() -> Vec<HardwarePort> {
     for caps in re.captures_iter(&stdout) {
         let portname = caps[1].to_string();
         let device: String = caps[2].to_string();
-        let ip = get_ipaddr(&device);
-        let speed = get_speed(&device, &ip);
+        let mac_address = caps[3].to_string();
         data.push(HardwarePort {
             name: portname,
-            ip_address: ip,
             device: device,
-            speed: speed,
-            mac_address: caps[3].to_string(),
+            mac_address: mac_address,
+            service_order: 0,
+            ..Default::default()
         })
     }
-    data
+    Ok(())
+}
+
+fn add_ip_addresses(data: &mut Vec<HardwarePort>) {
+    for port in data {
+        port.ip_address = get_ipaddr(&port.device);
+    }
+}
+fn add_speed_values(data: &mut Vec<HardwarePort>) {
+    for port in data {
+        port.speed = get_speed(&port.device, &port.ip_address);
+    }
+}
+
+fn get_service_order() -> HashMap<String, u8> {
+    // Returns a hash mapping port names to service order
+    // e.g.  "en7" -> 0, "en8" -> 1, "WiFi" -> 3
+    // Used to sort ports for printing
+    //
+    // uses the shell command:
+    //    networksetup -listnetworkserviceorder | grep Device
+    //
+    // which has sample output:
+    //      (Hardware Port: Thunderbolt Ethernet Slot 1, Device: en7)
+    //      (Hardware Port: Thunderbolt Ethernet Slot 0, Device: en8)
+    //      (Hardware Port: Thunderbolt Bridge, Device: bridge0)
+    //      (Hardware Port: Wi-Fi, Device: en0)
+    let networksetup_child = Command::new("networksetup")
+        .arg("-listnetworkserviceorder") // with argument `axww`...
+        .stdout(Stdio::piped()) // of which we will pipe the output.
+        .spawn() // Once configured, we actually spawn the command...
+        .unwrap(); // and assert everything went right.
+    let grep_child_one = Command::new("grep")
+        .arg("Device")
+        .stdin(Stdio::from(networksetup_child.stdout.unwrap())) // Pipe through.
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let output = grep_child_one.wait_with_output().unwrap();
+    let result = str::from_utf8(&output.stdout).unwrap();
+
+    //println!("{}", result);
+    let mut service_order: HashMap<String, u8> = HashMap::new();
+    let mut i = 0;
+    for line in result.lines() {
+        // remove trailing ')'
+        let mut device: &str = line
+            .strip_suffix(|_: char| true)
+            .expect("no ) at end of serviceorder line!");
+        device = device
+            .split_ascii_whitespace()
+            .last()
+            .expect("Couldn't split on whitespace?");
+        service_order.insert(device.to_string(), i);
+        i += 1;
+    }
+
+    service_order
+}
+
+fn sort_by_service_order(data: &mut Vec<HardwarePort>) {
+    let services_in_order = get_service_order();
+    for port in &mut *data {
+        if services_in_order.contains_key(&port.device) {
+            port.service_order = services_in_order[&port.device];
+        } else {
+            port.service_order = 255;
+        }
+    }
+
+    data.sort_by_key(|d1| d1.service_order);
+}
+
+fn print_table(data: Vec<HardwarePort>) -> Result<(), Box<dyn Error>> {
+    let mut table = Table::new(data);
+    table
+        .with(Style::rounded())
+        .with(Colorization::columns([
+            Color::FG_WHITE,
+            Color::FG_YELLOW,
+            Color::FG_GREEN,
+            Color::FG_BRIGHT_BLUE,
+            Color::FG_BRIGHT_MAGENTA,
+        ]))
+        .modify(Columns::new(3..4), Alignment::right());
+
+    println!("{}", table.to_string());
+    Ok(())
 }
 
 fn main() {
-    let net_data = get_net_data();
-    let mut table = Table::new(net_data);
-    table.with(Style::rounded()).with(Colorization::columns([
-        Color::FG_WHITE,
-        Color::FG_YELLOW,
-        Color::FG_GREEN,
-        Color::FG_BRIGHT_BLUE,
-        Color::FG_BRIGHT_MAGENTA,
-    ]));
-    table.modify(Columns::new(3..4), Alignment::right());
-
-    println!("{}", table.to_string());
+    let mut net_data: Vec<HardwarePort> = Vec::new();
+    get_hw_ports(&mut net_data).expect("Failed to read network data");
+    add_ip_addresses(&mut net_data);
+    add_speed_values(&mut net_data);
+    sort_by_service_order(&mut net_data);
+    print_table(net_data).expect("Failed to output table");
 }

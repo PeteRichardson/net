@@ -5,4 +5,8 @@ edition = "2021"
 
 [dependencies]
 regex = "1.10.4"
-tabled = { version = "*", features = ["ansi"] }
+tabled = "0.15.0"
+
+
+[profile.release]
+lto = "fat"
