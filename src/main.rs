@@ -17,6 +17,19 @@ struct HardwarePort {
     mac_address: String,
 }
 
+fn get_ipaddr(portname: &String) -> String {
+    //ipconfig getifaddr {row[1]}
+    let ports = Command::new("ipconfig")
+        .arg("getifaddr")
+        .arg(portname)
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(ports.stdout).expect("bad stdout from networksetup command");
+    // println!("{} -> {}", portname, stdout);
+    stdout.trim().to_string()
+}
+
 fn get_net_data() -> Vec<HardwarePort> {
     let mut data: Vec<HardwarePort> = Vec::new();
     let ports = Command::new("networksetup")
@@ -27,9 +40,13 @@ fn get_net_data() -> Vec<HardwarePort> {
 
     let re = Regex::new(r"Hardware Port: (.*)\nDevice: (.*)\nEthernet Address: (.*)\n\n").unwrap();
     for caps in re.captures_iter(&stdout) {
+        let portname = caps[1].to_string();
+        let device: String = caps[2].to_string();
+        let ip = get_ipaddr(&device);
         data.push(HardwarePort {
-            name: caps[1].to_string(),
-            device: caps[2].to_string(),
+            name: portname,
+            ip_address: ip,
+            device: device,
             mac_address: caps[3].to_string(),
             ..Default::default()
         })
