@@ -1,10 +1,11 @@
-// use std::process::Command;
+use regex::Regex;
+use std::process::Command;
 use tabled::{
     settings::{object::Columns, themes::Colorization, Alignment, Color, Style},
     Table, Tabled,
 };
 
-#[derive(Tabled)]
+#[derive(Tabled, Default)]
 #[tabled(rename_all = "PascalCase")]
 struct HardwarePort {
     name: String,
@@ -17,39 +18,28 @@ struct HardwarePort {
 }
 
 fn get_net_data() -> Vec<HardwarePort> {
-    let port1 = HardwarePort {
-        name: "Thunderbolt Ethernet Slot 0".to_string(),
-        ip_address: "192.168.1.57".to_string(),
-        device: "en7".to_string(),
-        speed: String::from("10GbE"),
-        mac_address: "00:30:93:10:47:a2".to_string(),
-    };
-    let port2 = HardwarePort {
-        name: "Wi-Fi".to_string(),
-        ip_address: "192.168.1.185".to_string(),
-        device: "en0".to_string(),
-        speed: String::from("1GbE"),
-        mac_address: "60:3e:5f:70:c4:64".to_string(),
-    };
-    let port3 = HardwarePort {
-        name: "Thunderbolt Bridge".to_string(),
-        ip_address: "".to_string(),
-        device: "bridge0".to_string(),
-        speed: String::from("1GbE"),
-        mac_address: "36:ec:0e:59:56:40".to_string(),
-    };
+    let mut data: Vec<HardwarePort> = Vec::new();
+    let ports = Command::new("networksetup")
+        .arg("-listallhardwareports")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(ports.stdout).expect("bad stdout from networksetup command");
 
-    vec![port1, port2, port3]
+    let re = Regex::new(r"Hardware Port: (.*)\nDevice: (.*)\nEthernet Address: (.*)\n\n").unwrap();
+    for caps in re.captures_iter(&stdout) {
+        data.push(HardwarePort {
+            name: caps[1].to_string(),
+            device: caps[2].to_string(),
+            mac_address: caps[3].to_string(),
+            ..Default::default()
+        })
+    }
+    data
 }
 
 fn main() {
-    // let ports = Command::new("networksetup")
-    //     .arg("-listallhardwareports")
-    //     .output()
-    //     .unwrap();
-    // println!("{}", String::from_utf8(ports.stdout).unwrap());
-
-    let mut table = Table::new(get_net_data());
+    let net_data = get_net_data();
+    let mut table = Table::new(net_data);
     table.with(Style::rounded()).with(Colorization::columns([
         Color::FG_WHITE,
         Color::FG_YELLOW,

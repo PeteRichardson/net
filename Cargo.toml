@@ -4,6 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-owo-colors = "4.0.0"
-subprocess = "0.2.9"
+regex = "1.10.4"
 tabled = { version = "*", features = ["ansi"] }
