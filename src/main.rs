@@ -1,5 +1,6 @@
 use regex::Regex;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::str;
 use tabled::{
     settings::{object::Columns, themes::Colorization, Alignment, Color, Style},
     Table, Tabled,
@@ -17,17 +18,46 @@ struct HardwarePort {
     mac_address: String,
 }
 
-fn get_ipaddr(portname: &String) -> String {
-    //ipconfig getifaddr {row[1]}
+fn get_ipaddr(device: &String) -> String {
+    //ipconfig getifaddr {device}
     let ports = Command::new("ipconfig")
         .arg("getifaddr")
-        .arg(portname)
+        .arg(device)
         .output()
         .unwrap();
 
-    let stdout = String::from_utf8(ports.stdout).expect("bad stdout from networksetup command");
-    // println!("{} -> {}", portname, stdout);
+    let stdout =
+        String::from_utf8(ports.stdout).expect("bad stdout from ipconfig getifaddr command");
     stdout.trim().to_string()
+}
+
+fn get_speed(device: &String, ip: &String) -> String {
+    //ifconfig {device} | grep media
+    let ps_child = Command::new("ifconfig") // `ps` command...
+        .arg(device) // with argument `axww`...
+        .stdout(Stdio::piped()) // of which we will pipe the output.
+        .spawn() // Once configured, we actually spawn the command...
+        .unwrap(); // and assert everything went right.
+    let grep_child_one = Command::new("grep")
+        .arg("media")
+        .stdin(Stdio::from(ps_child.stdout.unwrap())) // Pipe through.
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let output = grep_child_one.wait_with_output().unwrap();
+    let mut result = str::from_utf8(&output.stdout).unwrap();
+
+    if result.contains("10G") {
+        result = "10GbE";
+    } else if result.contains("1000") {
+        result = "1GbE";
+    } else {
+        result = "";
+        if !ip.is_empty() {
+            result = "auto?";
+        }
+    }
+    result.trim().to_string()
 }
 
 fn get_net_data() -> Vec<HardwarePort> {
@@ -43,12 +73,13 @@ fn get_net_data() -> Vec<HardwarePort> {
         let portname = caps[1].to_string();
         let device: String = caps[2].to_string();
         let ip = get_ipaddr(&device);
+        let speed = get_speed(&device, &ip);
         data.push(HardwarePort {
             name: portname,
             ip_address: ip,
             device: device,
+            speed: speed,
             mac_address: caps[3].to_string(),
-            ..Default::default()
         })
     }
     data
