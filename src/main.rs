@@ -22,46 +22,61 @@ struct HardwarePort {
     service_order: u8,
 }
 
-fn get_ipaddr(device: &String) -> String {
-    //ipconfig getifaddr {device}
-    let ports = Command::new("ipconfig")
-        .arg("getifaddr")
-        .arg(device)
-        .output()
-        .unwrap();
-
-    let stdout =
-        String::from_utf8(ports.stdout).expect("bad stdout from ipconfig getifaddr command");
-    stdout.trim().to_string()
-}
-
-fn get_speed(device: &String, ip: &String) -> String {
-    //ifconfig {device} | grep media
-    let ifconfig_child = Command::new("ifconfig") // `ifconfig` command...
-        .arg(device) // with argument `axww`...
-        .stdout(Stdio::piped()) // of which we will pipe the output.
-        .spawn() // Once configured, we actually spawn the command...
-        .unwrap(); // and assert everything went right.
-    let grep_child_one = Command::new("grep")
-        .arg("media")
-        .stdin(Stdio::from(ifconfig_child.stdout.unwrap())) // Pipe through.
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let output = grep_child_one.wait_with_output().unwrap();
-    let mut result = str::from_utf8(&output.stdout).unwrap();
-    if result.contains("10G") {
-        result = "10GbE";
-    } else if result.contains("1000") {
-        result = "1GbE";
-    } else {
-        if !ip.is_empty() && result.contains("auto") {
-            result = "auto";
-        } else {
-            result = "";
+impl HardwarePort {
+    fn new(name: String, device: String, mac_address: String) -> Self {
+        let ip_address = HardwarePort::get_ipaddr(&device);
+        let speed = HardwarePort::get_speed(&device, &ip_address);
+        Self {
+            name: name,
+            ip_address: ip_address,
+            speed: speed,
+            device: device,
+            mac_address: mac_address,
+            service_order: 0,
         }
     }
-    result.trim().to_string()
+
+    fn get_ipaddr(device: &String) -> String {
+        //ipconfig getifaddr {device}
+        let ports = Command::new("ipconfig")
+            .arg("getifaddr")
+            .arg(device)
+            .output()
+            .unwrap();
+
+        let stdout =
+            String::from_utf8(ports.stdout).expect("bad stdout from ipconfig getifaddr command");
+        stdout.trim().to_string()
+    }
+
+    fn get_speed(device: &String, ip: &String) -> String {
+        //ifconfig {device} | grep media
+        let ifconfig_child = Command::new("ifconfig") // `ifconfig` command...
+            .arg(device) // with argument `axww`...
+            .stdout(Stdio::piped()) // of which we will pipe the output.
+            .spawn() // Once configured, we actually spawn the command...
+            .unwrap(); // and assert everything went right.
+        let grep_child_one = Command::new("grep")
+            .arg("media")
+            .stdin(Stdio::from(ifconfig_child.stdout.unwrap())) // Pipe through.
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let output = grep_child_one.wait_with_output().unwrap();
+        let mut result = str::from_utf8(&output.stdout).unwrap();
+        if result.contains("10G") {
+            result = "10GbE";
+        } else if result.contains("1000") {
+            result = "1GbE";
+        } else {
+            if !ip.is_empty() && result.contains("auto") {
+                result = "auto";
+            } else {
+                result = "";
+            }
+        }
+        result.trim().to_string()
+    }
 }
 
 fn get_hw_ports(data: &mut Vec<HardwarePort>) -> Result<(), Box<dyn Error>> {
@@ -76,26 +91,9 @@ fn get_hw_ports(data: &mut Vec<HardwarePort>) -> Result<(), Box<dyn Error>> {
         let portname = caps[1].to_string();
         let device: String = caps[2].to_string();
         let mac_address = caps[3].to_string();
-        data.push(HardwarePort {
-            name: portname,
-            device: device,
-            mac_address: mac_address,
-            service_order: 0,
-            ..Default::default()
-        })
+        data.push(HardwarePort::new(portname, device, mac_address))
     }
     Ok(())
-}
-
-fn add_ip_addresses(data: &mut Vec<HardwarePort>) {
-    for port in data {
-        port.ip_address = get_ipaddr(&port.device);
-    }
-}
-fn add_speed_values(data: &mut Vec<HardwarePort>) {
-    for port in data {
-        port.speed = get_speed(&port.device, &port.ip_address);
-    }
 }
 
 fn get_service_order() -> HashMap<String, u8> {
@@ -177,8 +175,6 @@ fn print_table(data: Vec<HardwarePort>) -> Result<(), Box<dyn Error>> {
 fn main() {
     let mut net_data: Vec<HardwarePort> = Vec::new();
     get_hw_ports(&mut net_data).expect("Failed to read network data");
-    add_ip_addresses(&mut net_data);
-    add_speed_values(&mut net_data);
     sort_by_service_order(&mut net_data);
     print_table(net_data).expect("Failed to output table");
 }
