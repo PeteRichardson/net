@@ -36,11 +36,11 @@ impl HardwarePort {
         let ip_address = HardwarePort::get_ipaddr(&device);
         let speed = HardwarePort::get_speed(&device, &ip_address);
         Self {
-            name: name,
-            ip_address: ip_address,
-            speed: speed,
-            device: device,
-            mac_address: mac_address,
+            name,
+            ip_address,
+            speed,
+            device,
+            mac_address,
             service_order: 0,
         }
     }
@@ -58,7 +58,7 @@ impl HardwarePort {
         stdout.trim().to_string()
     }
 
-    fn get_speed(device: &String, ip: &String) -> String {
+    fn get_speed(device: &String, ip: &str) -> String {
         //ifconfig {device} | grep media
         let ifconfig_child = Command::new("ifconfig") // `ifconfig` command...
             .arg(device) // with argument `axww`...
@@ -77,13 +77,11 @@ impl HardwarePort {
             result = "10GbE";
         } else if result.contains("1000") {
             result = "1GbE";
-        } else {
-            if !ip.is_empty() && result.contains("auto") {
+        } else if !ip.is_empty() && result.contains("auto") {
                 result = "auto";
             } else {
                 result = "";
             }
-        }
         result.trim().to_string()
     }
 }
@@ -144,8 +142,7 @@ impl HardwarePortList {
 
             //println!("{}", result);
             let mut service_order: HashMap<String, u8> = HashMap::new();
-            let mut i = 0;
-            for line in result.lines() {
+            for (i,line) in result.lines().enumerate() {
                 // remove trailing ')'
                 let mut device: &str = line
                     .strip_suffix(|_: char| true)
@@ -154,8 +151,7 @@ impl HardwarePortList {
                     .split_ascii_whitespace()
                     .last()
                     .expect("Couldn't split on whitespace?");
-                service_order.insert(device.to_string(), i);
-                i += 1;
+                service_order.insert(device.to_string(), i.try_into().unwrap());
             }
 
             service_order
@@ -181,7 +177,7 @@ impl HardwarePortList {
                 .into_iter()
                 .filter(|p| !(p.ip_address).is_empty())
                 .collect();
-            Self { ports: ports }
+            Self { ports }
         } else {
             self
         }
