@@ -28,7 +28,7 @@ struct HardwarePort {
     #[tabled(rename = "MAC Address")]
     mac_address: String,
     #[tabled(skip)]
-    service_order: u8,
+    service_order: usize,
 }
 
 impl HardwarePort {
@@ -125,7 +125,7 @@ impl HardwarePortList {
     }
 
     fn in_service_order(mut self) -> Self {
-        fn get_service_order() -> HashMap<String, u8> {
+        fn get_service_order() -> HashMap<String, usize> {
             // Returns a hash mapping port names to service order
             // e.g.  "en7" -> 0, "en8" -> 1, "WiFi" -> 3
             // Used to sort ports for printing
@@ -153,7 +153,7 @@ impl HardwarePortList {
             let result = str::from_utf8(&output.stdout).unwrap();
 
             //println!("{}", result);
-            let mut service_order: HashMap<String, u8> = HashMap::new();
+            let mut service_order: HashMap<String, usize> = HashMap::new();
             for (i, line) in result.lines().enumerate() {
                 // remove trailing ')'
                 let mut device: &str = line
@@ -163,7 +163,7 @@ impl HardwarePortList {
                     .split_ascii_whitespace()
                     .last()
                     .expect("Couldn't split on whitespace?");
-                service_order.insert(device.to_string(), i.try_into().unwrap());
+                service_order.insert(device.to_string(), i);
             }
 
             service_order
@@ -172,9 +172,9 @@ impl HardwarePortList {
         let services_in_order = get_service_order();
         for port in &mut *self.ports {
             if services_in_order.contains_key(&port.device) {
-                port.service_order = services_in_order[&port.device];
+                port.service_order = services_in_order[&port.device].clone();
             } else {
-                port.service_order = 255;
+                port.service_order = usize::MAX;
             }
         }
 
