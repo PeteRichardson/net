@@ -112,7 +112,7 @@ impl HardwarePortList {
         let stdout = String::from_utf8(ports.stdout).expect("bad stdout from networksetup command");
 
         let re =
-            Regex::new(r"Hardware Port: (.*)\nDevice: (.*)\nEthernet Address: (.*)\n\n").unwrap();
+            Regex::new(r"Hardware Port: (.*)\r?\nDevice: (.*)\r?\nEthernet Address: (.*)\r?\n\r?\n").unwrap();
         for caps in re.captures_iter(&stdout) {
             let portname = caps[1].to_string();
             let device: String = caps[2].to_string();
