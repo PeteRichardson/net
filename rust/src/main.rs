@@ -60,11 +60,12 @@ impl HardwarePort {
 
     fn get_speed(device: &String, ip: &str) -> String {
         //ifconfig {device} | grep media
-        let ifconfig_child = Command::new("ifconfig") // `ifconfig` command...
-            .arg(device) // with argument `axww`...
-            .stdout(Stdio::piped()) // of which we will pipe the output.
-            .spawn() // Once configured, we actually spawn the command...
-            .unwrap(); // and assert everything went right.
+        let ifconfig_child = Command::new("ifconfig")
+            .arg(device)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
         let grep_child_one = Command::new("grep")
             .arg("media")
             .stdin(Stdio::from(ifconfig_child.stdout.unwrap())) // Pipe through.
