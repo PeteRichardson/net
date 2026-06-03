@@ -75,13 +75,25 @@ impl HardwarePort {
         let mut result = str::from_utf8(&output.stdout).unwrap();
         if result.contains("10G") {
             result = "10GbE";
+        } else if result.contains("5000") {
+            result = "5GbE";
+        } else if result.contains("2500") {
+            result = "2.5GbE";
         } else if result.contains("1000") {
             result = "1GbE";
+        } else if result.contains("100") {
+            result = "100Mbps";
+        } else if result.contains("10base") {
+            result = "10Mbps";
         } else if !ip.is_empty() && result.contains("auto") {
-                result = "auto";
-            } else {
-                result = "";
-            }
+            // TODO: If location services is enabled for this tool, use
+            //  CWWiFiClient.shared()?.interface().transmitRate()
+            // to get and display negotiated transmit speed,
+            // else just display "auto"
+            result = "auto";
+        } else {
+            result = "";
+        }
         result.trim().to_string()
     }
 }
@@ -142,10 +154,10 @@ impl HardwarePortList {
 
             //println!("{}", result);
             let mut service_order: HashMap<String, u8> = HashMap::new();
-            for (i,line) in result.lines().enumerate() {
+            for (i, line) in result.lines().enumerate() {
                 // remove trailing ')'
                 let mut device: &str = line
-                    .strip_suffix(|_: char| true)
+                    .strip_suffix(')')
                     .expect("no ) at end of serviceorder line!");
                 device = device
                     .split_ascii_whitespace()
