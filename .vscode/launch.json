@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'net-rs'",
+            "name": "Debug executable 'net'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=net-rs",
-                    "--package=net-rs"
+                    "--bin=net",
+                    "--package=net"
                 ],
                 "filter": {
-                    "name": "net-rs",
+                    "name": "net",
                     "kind": "bin"
                 }
             },
@@ -25,16 +25,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'net-rs'",
+            "name": "Debug unit tests in executable 'net'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=net-rs",
-                    "--package=net-rs"
+                    "--bin=net",
+                    "--package=net"
                 ],
                 "filter": {
-                    "name": "net-rs",
+                    "name": "net",
                     "kind": "bin"
                 }
             },

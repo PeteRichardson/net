@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-`net` is a macOS CLI tool that displays network hardware ports with their IP addresses, link speed, and MAC addresses in a colorized table, sorted by network service order. There are two implementations — Rust (`rust/`) is preferred; Python (`python/`) is a legacy version.
+`net` is a macOS CLI tool that displays network hardware ports with their IP addresses, link speed, and MAC addresses in a colorized table, sorted by network service order.
 
-## Commands (run from `rust/`)
+## Commands (run from project root)
 
 ```bash
 cargo build              # debug build
@@ -18,9 +18,9 @@ cargo clippy             # lint
 cargo test               # run tests
 ```
 
-The compiled binary lands at `rust/target/debug/net-rs` (debug) or `rust/target/release/net-rs` (release).
+The compiled binary lands at `target/debug/net` (debug) or `target/release/net` (release).
 
-## Architecture (`rust/src/main.rs`)
+## Architecture (`src/main.rs`)
 
 Everything lives in a single file. The data flow is:
 
