@@ -93,29 +93,8 @@ impl HardwarePort {
             .spawn()
             .unwrap();
         let output = grep_child_one.wait_with_output().unwrap();
-        let mut result = str::from_utf8(&output.stdout).unwrap();
-        if result.contains("10G") {
-            result = "10GbE";
-        } else if result.contains("5000") {
-            result = "5GbE";
-        } else if result.contains("2500") {
-            result = "2.5GbE";
-        } else if result.contains("1000") {
-            result = "1GbE";
-        } else if result.contains("100") {
-            result = "100Mbps";
-        } else if result.contains("10base") {
-            result = "10Mbps";
-        } else if !ip.is_empty() && result.contains("auto") {
-            // TODO: If location services is enabled for this tool, use
-            //  CWWiFiClient.shared()?.interface().transmitRate()
-            // to get and display negotiated transmit speed,
-            // else just display "auto"
-            result = "auto";
-        } else {
-            result = "";
-        }
-        result.trim().to_string()
+        let result = str::from_utf8(&output.stdout).unwrap();
+        map_speed_string(result, ip).to_string()
     }
 }
 
@@ -141,7 +120,7 @@ impl HardwarePortList {
         // Each port block in the output is three lines followed by a blank line.
         // The \r? handles both LF and CRLF line endings defensively.
         let re = Regex::new(
-            r"Hardware Port: (.*)\r?\nDevice: (.*)\r?\nEthernet Address: (.*)\r?\n\r?\n",
+            r"Hardware Port: ([^\r\n]*)\r?\nDevice: ([^\r\n]*)\r?\nEthernet Address: ([^\r\n]*)\r?\n\r?\n",
         )
         .unwrap();
         for caps in re.captures_iter(&stdout) {
@@ -257,6 +236,34 @@ fn print_table(data: HardwarePortList) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Map the raw `ifconfig` media line to a human-readable speed string.
+///
+/// `ip` is consulted only for the `auto` branch: an `auto`-negotiated interface
+/// with no IP address is treated as disconnected and returns `""`.
+fn map_speed_string(ifconfig_output: &str, ip: &str) -> &'static str {
+    if ifconfig_output.contains("10G") {
+        "10GbE"
+    } else if ifconfig_output.contains("5000") {
+        "5GbE"
+    } else if ifconfig_output.contains("2500") {
+        "2.5GbE"
+    } else if ifconfig_output.contains("1000") {
+        "1GbE"
+    } else if ifconfig_output.contains("100") {
+        "100Mbps"
+    } else if ifconfig_output.contains("10base") {
+        "10Mbps"
+    } else if !ip.is_empty() && ifconfig_output.contains("auto") {
+        // TODO: If location services is enabled for this tool, use
+        //  CWWiFiClient.shared()?.interface().transmitRate()
+        // to get and display negotiated transmit speed,
+        // else just display "auto"
+        "auto"
+    } else {
+        ""
+    }
+}
+
 /// Entry point: parse CLI flags, collect and sort hardware ports, then display them.
 fn main() {
     let config = Config::parse();
@@ -265,4 +272,100 @@ fn main() {
         .in_service_order()
         .filter_ports(!config.all_ports); // filter to active ports only, unless -all-ports
     print_table(hardware_ports).expect("Failed to output table");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use regex::Regex;
+
+    fn make_port(device: &str, ip: &str) -> HardwarePort {
+        HardwarePort {
+            name: device.to_string(),
+            device: device.to_string(),
+            ip_address: ip.to_string(),
+            mac_address: String::new(),
+            speed: String::new(),
+            service_order: 0,
+        }
+    }
+
+    fn port_regex() -> Regex {
+        Regex::new(
+            r"Hardware Port: ([^\r\n]*)\r?\nDevice: ([^\r\n]*)\r?\nEthernet Address: ([^\r\n]*)\r?\n\r?\n",
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_regex_parses_lf() {
+        let input =
+            "Hardware Port: Wi-Fi\nDevice: en0\nEthernet Address: a1:b2:c3:d4:e5:f6\n\n";
+        let caps = port_regex().captures(input).expect("regex should match LF input");
+        assert_eq!(&caps[1], "Wi-Fi");
+        assert_eq!(&caps[2], "en0");
+        assert_eq!(&caps[3], "a1:b2:c3:d4:e5:f6");
+    }
+
+    #[test]
+    fn test_regex_parses_crlf() {
+        let input =
+            "Hardware Port: Wi-Fi\r\nDevice: en0\r\nEthernet Address: a1:b2:c3:d4:e5:f6\r\n\r\n";
+        let caps = port_regex().captures(input).expect("regex should match CRLF input");
+        assert_eq!(&caps[1], "Wi-Fi");
+        assert_eq!(&caps[2], "en0");
+        assert_eq!(&caps[3], "a1:b2:c3:d4:e5:f6");
+    }
+
+    #[test]
+    fn test_regex_parses_multiple_ports() {
+        let input = concat!(
+            "Hardware Port: Wi-Fi\nDevice: en0\nEthernet Address: a1:b2:c3:d4:e5:f6\n\n",
+            "Hardware Port: Ethernet\nDevice: en1\nEthernet Address: 11:22:33:44:55:66\n\n",
+        );
+        let matches: Vec<_> = port_regex().captures_iter(input).collect();
+        assert_eq!(matches.len(), 2);
+        assert_eq!(&matches[0][2], "en0");
+        assert_eq!(&matches[1][2], "en1");
+    }
+
+    #[test]
+    fn test_filter_ports_removes_inactive() {
+        let list = HardwarePortList {
+            ports: vec![make_port("en0", "192.168.1.1"), make_port("en1", "")],
+        };
+        let filtered = list.filter_ports(true);
+        assert_eq!(filtered.ports.len(), 1);
+        assert_eq!(filtered.ports[0].device, "en0");
+    }
+
+    #[test]
+    fn test_filter_ports_keeps_all() {
+        let list = HardwarePortList {
+            ports: vec![make_port("en0", "192.168.1.1"), make_port("en1", "")],
+        };
+        let filtered = list.filter_ports(false);
+        assert_eq!(filtered.ports.len(), 2);
+    }
+
+    #[test]
+    fn test_filter_ports_all_inactive_returns_empty() {
+        let list = HardwarePortList {
+            ports: vec![make_port("en0", ""), make_port("en1", "")],
+        };
+        assert!(list.filter_ports(true).ports.is_empty());
+    }
+
+    #[test]
+    fn test_speed_mapping() {
+        assert_eq!(map_speed_string("media: 10GbaseT", ""), "10GbE");
+        assert_eq!(map_speed_string("media: 5000baseT", ""), "5GbE");
+        assert_eq!(map_speed_string("media: 2500baseT", ""), "2.5GbE");
+        assert_eq!(map_speed_string("media: 1000baseT", ""), "1GbE");
+        assert_eq!(map_speed_string("media: 100baseTX", ""), "100Mbps");
+        assert_eq!(map_speed_string("media: 10baseT", ""), "10Mbps");
+        assert_eq!(map_speed_string("media: autoselect", "192.168.1.1"), "auto");
+        assert_eq!(map_speed_string("media: autoselect", ""), "");
+        assert_eq!(map_speed_string("", ""), "");
+    }
 }
