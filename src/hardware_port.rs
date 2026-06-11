@@ -26,23 +26,27 @@ pub struct HardwarePort {
 
 impl HardwarePort {
     /// Construct a `HardwarePort` from the identifying fields returned by
-    /// `networksetup -listallhardwareports`, querying for IP address and
-    /// link speed as part of initialization.
-    pub(crate) fn new(
-        name: String,
-        device: String,
-        mac_address: String,
-    ) -> Result<Self, Box<dyn Error>> {
-        let ip_address = HardwarePort::get_ipaddr(&device)?;
-        let speed = HardwarePort::get_speed(&device, &ip_address)?;
-        Ok(Self {
+    /// `networksetup -listallhardwareports`.
+    ///
+    /// `ip_address` and `speed` are left empty; call `query_network_state()`
+    /// to populate them from the live system.
+    pub(crate) fn new(name: String, device: String, mac_address: String) -> Self {
+        Self {
             name,
-            ip_address,
-            speed,
             device,
             mac_address,
+            ip_address: String::new(),
+            speed: String::new(),
             service_order: 0,
-        })
+        }
+    }
+
+    /// Query the live system for this port's current IP address and link
+    /// speed, and store them on `self`.
+    pub(crate) fn query_network_state(&mut self) -> Result<(), Box<dyn Error>> {
+        self.ip_address = HardwarePort::get_ipaddr(&self.device)?;
+        self.speed = HardwarePort::get_speed(&self.device, &self.ip_address)?;
+        Ok(())
     }
 
     /// Return the IPv4 address currently assigned to `device`, or an empty

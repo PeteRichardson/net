@@ -57,10 +57,12 @@ impl HardwarePortList {
             .output()?;
         let stdout = String::from_utf8(output.stdout)?;
 
-        let ports = parse_hardware_ports(&stdout)
-            .into_iter()
-            .map(|(name, device, mac_address)| HardwarePort::new(name, device, mac_address))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut ports = Vec::new();
+        for (name, device, mac_address) in parse_hardware_ports(&stdout) {
+            let mut port = HardwarePort::new(name, device, mac_address);
+            port.query_network_state()?;
+            ports.push(port);
+        }
 
         Ok(Self { ports })
     }
