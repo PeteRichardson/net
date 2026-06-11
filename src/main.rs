@@ -186,7 +186,7 @@ impl HardwarePortList {
         let services_in_order = get_service_order();
         for port in &mut *self.ports {
             if services_in_order.contains_key(&port.device) {
-                port.service_order = services_in_order[&port.device].clone();
+                port.service_order = services_in_order[&port.device];
             } else {
                 // Ports not present in the service order list sort to the bottom.
                 port.service_order = usize::MAX;
