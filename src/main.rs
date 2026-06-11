@@ -42,34 +42,30 @@ impl HardwarePort {
     /// Construct a `HardwarePort` from the identifying fields returned by
     /// `networksetup -listallhardwareports`, querying for IP address and
     /// link speed as part of initialization.
-    fn new(name: String, device: String, mac_address: String) -> Self {
-        let ip_address = HardwarePort::get_ipaddr(&device);
-        let speed = HardwarePort::get_speed(&device, &ip_address);
-        Self {
+    fn new(name: String, device: String, mac_address: String) -> Result<Self, Box<dyn Error>> {
+        let ip_address = HardwarePort::get_ipaddr(&device)?;
+        let speed = HardwarePort::get_speed(&device, &ip_address)?;
+        Ok(Self {
             name,
             ip_address,
             speed,
             device,
             mac_address,
             service_order: 0,
-        }
+        })
     }
 
     /// Return the IPv4 address currently assigned to `device`, or an empty
     /// string if the interface has no address.
     ///
     /// Delegates to `ipconfig getifaddr <device>`.
-    fn get_ipaddr(device: &String) -> String {
+    fn get_ipaddr(device: &String) -> Result<String, std::io::Error> {
         //ipconfig getifaddr {device}
-        let ports = Command::new("ipconfig")
+        let output = Command::new("ipconfig")
             .arg("getifaddr")
             .arg(device)
-            .output()
-            .unwrap();
-
-        let stdout =
-            String::from_utf8(ports.stdout).expect("bad stdout from ipconfig getifaddr command");
-        stdout.trim().to_string()
+            .output()?;
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
     /// Return a human-readable link-speed string for `device` (e.g. `"1GbE"`,
@@ -78,23 +74,22 @@ impl HardwarePort {
     /// Parses the `media` line from `ifconfig <device>`. When the interface
     /// reports `auto` and an IP is present, returns `"auto"` because the
     /// negotiated rate is not accessible without location-services permission.
-    fn get_speed(device: &String, ip: &str) -> String {
+    fn get_speed(device: &String, ip: &str) -> Result<String, Box<dyn Error>> {
         //ifconfig {device} | grep media
-        let ifconfig_child = Command::new("ifconfig")
+        let mut ifconfig_child = Command::new("ifconfig")
             .arg(device)
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
+            .spawn()?;
         let grep_child_one = Command::new("grep")
             .arg("media")
-            .stdin(Stdio::from(ifconfig_child.stdout.unwrap())) // Pipe through.
+            .stdin(Stdio::from(ifconfig_child.stdout.take().unwrap())) // Pipe through.
             .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let output = grep_child_one.wait_with_output().unwrap();
-        let result = str::from_utf8(&output.stdout).unwrap();
-        map_speed_string(result, ip).to_string()
+            .spawn()?;
+        let output = grep_child_one.wait_with_output()?;
+        ifconfig_child.wait()?;
+        let result = str::from_utf8(&output.stdout)?;
+        Ok(map_speed_string(result, ip).to_string())
     }
 }
 
@@ -109,13 +104,12 @@ impl HardwarePortList {
     ///
     /// The returned list is in the arbitrary order that `networksetup` emits, not
     /// service-preference order; call `in_service_order()` to sort before display.
-    fn new() -> Self {
+    fn new() -> Result<Self, Box<dyn Error>> {
         let mut port_data: Vec<HardwarePort> = Vec::new();
         let ports = Command::new("networksetup")
             .arg("-listallhardwareports")
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8(ports.stdout).expect("bad stdout from networksetup command");
+            .output()?;
+        let stdout = String::from_utf8(ports.stdout)?;
 
         // Each port block in the output is three lines followed by a blank line.
         // The \r? handles both LF and CRLF line endings defensively.
@@ -127,11 +121,11 @@ impl HardwarePortList {
             let portname = caps[1].to_string();
             let device: String = caps[2].to_string();
             let mac_address = caps[3].to_string();
-            port_data.push(HardwarePort::new(portname, device, mac_address))
+            port_data.push(HardwarePort::new(portname, device, mac_address)?)
         }
 
         //HardwarePortList::sort_by_service_order(&mut port_data);
-        Self { ports: port_data }
+        Ok(Self { ports: port_data })
     }
 
     /// Re-order ports to match the network service priority set in System Settings.
@@ -265,13 +259,13 @@ fn map_speed_string(ifconfig_output: &str, ip: &str) -> &'static str {
 }
 
 /// Entry point: parse CLI flags, collect and sort hardware ports, then display them.
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     let config = Config::parse();
 
-    let hardware_ports = HardwarePortList::new()
+    let hardware_ports = HardwarePortList::new()?
         .in_service_order()
         .filter_ports(!config.all_ports); // filter to active ports only, unless -all-ports
-    print_table(hardware_ports).expect("Failed to output table");
+    print_table(hardware_ports)
 }
 
 #[cfg(test)]
