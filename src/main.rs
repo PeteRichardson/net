@@ -227,7 +227,7 @@ fn print_table(data: HardwarePortList) -> Result<(), Box<dyn Error>> {
         ]))
         .modify(Columns::new(3..4), Alignment::right());
 
-    println!("{}", table.to_string());
+    println!("{}", table);
     Ok(())
 }
 
@@ -294,9 +294,10 @@ mod tests {
 
     #[test]
     fn test_regex_parses_lf() {
-        let input =
-            "Hardware Port: Wi-Fi\nDevice: en0\nEthernet Address: a1:b2:c3:d4:e5:f6\n\n";
-        let caps = port_regex().captures(input).expect("regex should match LF input");
+        let input = "Hardware Port: Wi-Fi\nDevice: en0\nEthernet Address: a1:b2:c3:d4:e5:f6\n\n";
+        let caps = port_regex()
+            .captures(input)
+            .expect("regex should match LF input");
         assert_eq!(&caps[1], "Wi-Fi");
         assert_eq!(&caps[2], "en0");
         assert_eq!(&caps[3], "a1:b2:c3:d4:e5:f6");
@@ -306,7 +307,9 @@ mod tests {
     fn test_regex_parses_crlf() {
         let input =
             "Hardware Port: Wi-Fi\r\nDevice: en0\r\nEthernet Address: a1:b2:c3:d4:e5:f6\r\n\r\n";
-        let caps = port_regex().captures(input).expect("regex should match CRLF input");
+        let caps = port_regex()
+            .captures(input)
+            .expect("regex should match CRLF input");
         assert_eq!(&caps[1], "Wi-Fi");
         assert_eq!(&caps[2], "en0");
         assert_eq!(&caps[3], "a1:b2:c3:d4:e5:f6");
