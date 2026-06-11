@@ -116,6 +116,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_new_sets_identity_fields_and_defaults() {
+        let port = HardwarePort::new(
+            "Wi-Fi".to_string(),
+            "en0".to_string(),
+            "a1:b2:c3:d4:e5:f6".to_string(),
+        );
+        assert_eq!(port.name, "Wi-Fi");
+        assert_eq!(port.device, "en0");
+        assert_eq!(port.mac_address, "a1:b2:c3:d4:e5:f6");
+        assert_eq!(port.ip_address, "");
+        assert_eq!(port.speed, "");
+        assert_eq!(port.service_order, 0);
+    }
+
+    #[test]
     fn test_speed_mapping() {
         assert_eq!(map_speed_string("media: 10GbaseT", ""), "10GbE");
         assert_eq!(map_speed_string("media: 5000baseT", ""), "5GbE");
