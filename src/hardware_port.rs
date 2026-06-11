@@ -65,21 +65,17 @@ impl HardwarePort {
     /// reports `auto` and an IP is present, returns `"auto"` because the
     /// negotiated rate is not accessible without location-services permission.
     fn get_speed(device: &String, ip: &str) -> Result<String, Box<dyn Error>> {
-        //ifconfig {device} | grep media
-        let mut ifconfig_child = Command::new("ifconfig")
+        let output = Command::new("ifconfig")
             .arg(device)
-            .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .spawn()?;
-        let grep_child_one = Command::new("grep")
-            .arg("media")
-            .stdin(Stdio::from(ifconfig_child.stdout.take().unwrap())) // Pipe through.
-            .stdout(Stdio::piped())
-            .spawn()?;
-        let output = grep_child_one.wait_with_output()?;
-        ifconfig_child.wait()?;
-        let result = str::from_utf8(&output.stdout)?;
-        Ok(map_speed_string(result, ip).to_string())
+            .output()?;
+        let stdout = str::from_utf8(&output.stdout)?;
+        let media_lines: String = stdout
+            .lines()
+            .filter(|line| line.contains("media"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Ok(map_speed_string(&media_lines, ip).to_string())
     }
 }
 

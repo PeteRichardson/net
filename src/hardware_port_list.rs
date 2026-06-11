@@ -2,7 +2,7 @@ use crate::hardware_port::HardwarePort;
 use regex::Regex;
 use std::collections::HashMap;
 use std::error::Error;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::str;
 
 /// An ordered collection of hardware network ports discovered on this machine.
@@ -71,30 +71,25 @@ impl HardwarePortList {
     /// are placed at the end by assigning them `usize::MAX` as their sort key.
     pub fn in_service_order(mut self) -> Self {
         fn get_service_order() -> HashMap<String, usize> {
-            // uses the shell command:
-            //    networksetup -listnetworkserviceorder | grep Device
+            // uses the shell command: networksetup -listnetworkserviceorder
             //
-            // which has sample output:
+            // which has sample output containing lines like:
             //      (Hardware Port: Thunderbolt Ethernet Slot 1, Device: en7)
             //      (Hardware Port: Thunderbolt Ethernet Slot 0, Device: en8)
             //      (Hardware Port: Thunderbolt Bridge, Device: bridge0)
             //      (Hardware Port: Wi-Fi, Device: en0)
-            let mut networksetup_child = Command::new("networksetup")
+            let output = Command::new("networksetup")
                 .arg("-listnetworkserviceorder")
-                .stdout(Stdio::piped())
-                .spawn()
+                .output()
                 .unwrap();
-            let grep_child_one = Command::new("grep")
-                .arg("Device")
-                .stdin(Stdio::from(networksetup_child.stdout.take().unwrap())) // Pipe through.
-                .stdout(Stdio::piped())
-                .spawn()
-                .unwrap();
-            let output = grep_child_one.wait_with_output().unwrap();
-            networksetup_child.wait().unwrap();
-            let result = str::from_utf8(&output.stdout).unwrap();
+            let stdout = str::from_utf8(&output.stdout).unwrap();
+            let device_lines: String = stdout
+                .lines()
+                .filter(|line| line.contains("Device"))
+                .collect::<Vec<_>>()
+                .join("\n");
 
-            parse_service_order(result)
+            parse_service_order(&device_lines)
         }
 
         let services_in_order = get_service_order();
