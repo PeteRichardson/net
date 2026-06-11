@@ -146,18 +146,19 @@ impl HardwarePortList {
             //      (Hardware Port: Thunderbolt Ethernet Slot 0, Device: en8)
             //      (Hardware Port: Thunderbolt Bridge, Device: bridge0)
             //      (Hardware Port: Wi-Fi, Device: en0)
-            let networksetup_child = Command::new("networksetup")
+            let mut networksetup_child = Command::new("networksetup")
                 .arg("-listnetworkserviceorder")
                 .stdout(Stdio::piped())
                 .spawn()
                 .unwrap();
             let grep_child_one = Command::new("grep")
                 .arg("Device")
-                .stdin(Stdio::from(networksetup_child.stdout.unwrap())) // Pipe through.
+                .stdin(Stdio::from(networksetup_child.stdout.take().unwrap())) // Pipe through.
                 .stdout(Stdio::piped())
                 .spawn()
                 .unwrap();
             let output = grep_child_one.wait_with_output().unwrap();
+            networksetup_child.wait().unwrap();
             let result = str::from_utf8(&output.stdout).unwrap();
 
             //println!("{}", result);
