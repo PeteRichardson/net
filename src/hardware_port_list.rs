@@ -10,6 +10,41 @@ pub struct HardwarePortList {
     pub ports: Vec<HardwarePort>,
 }
 
+/// Parse the output of `networksetup -listallhardwareports` into
+/// `(name, device, mac_address)` tuples, one per hardware port block.
+///
+/// Each port block is three lines followed by a blank line. The `\r?`
+/// handles both LF and CRLF line endings defensively.
+fn parse_hardware_ports(stdout: &str) -> Vec<(String, String, String)> {
+    let re = Regex::new(
+        r"Hardware Port: ([^\r\n]*)\r?\nDevice: ([^\r\n]*)\r?\nEthernet Address: ([^\r\n]*)\r?\n\r?\n",
+    )
+    .unwrap();
+    re.captures_iter(stdout)
+        .map(|caps| (caps[1].to_string(), caps[2].to_string(), caps[3].to_string()))
+        .collect()
+}
+
+/// Parse the output of `networksetup -listnetworkserviceorder | grep Device`
+/// into a map from device name to service order index.
+///
+/// Sample input line: `(Hardware Port: Wi-Fi, Device: en0)`
+fn parse_service_order(output: &str) -> HashMap<String, usize> {
+    let mut service_order: HashMap<String, usize> = HashMap::new();
+    for (i, line) in output.lines().enumerate() {
+        // remove trailing ')'
+        let mut device: &str = line
+            .strip_suffix(')')
+            .expect("no ) at end of serviceorder line!");
+        device = device
+            .split_ascii_whitespace()
+            .last()
+            .expect("Couldn't split on whitespace?");
+        service_order.insert(device.to_string(), i);
+    }
+    service_order
+}
+
 impl HardwarePortList {
     /// Discover all hardware network ports by running `networksetup -listallhardwareports`
     /// and construct a `HardwarePort` for each one.
@@ -17,27 +52,17 @@ impl HardwarePortList {
     /// The returned list is in the arbitrary order that `networksetup` emits, not
     /// service-preference order; call `in_service_order()` to sort before display.
     pub fn new() -> Result<Self, Box<dyn Error>> {
-        let mut port_data: Vec<HardwarePort> = Vec::new();
-        let ports = Command::new("networksetup")
+        let output = Command::new("networksetup")
             .arg("-listallhardwareports")
             .output()?;
-        let stdout = String::from_utf8(ports.stdout)?;
+        let stdout = String::from_utf8(output.stdout)?;
 
-        // Each port block in the output is three lines followed by a blank line.
-        // The \r? handles both LF and CRLF line endings defensively.
-        let re = Regex::new(
-            r"Hardware Port: ([^\r\n]*)\r?\nDevice: ([^\r\n]*)\r?\nEthernet Address: ([^\r\n]*)\r?\n\r?\n",
-        )
-        .unwrap();
-        for caps in re.captures_iter(&stdout) {
-            let portname = caps[1].to_string();
-            let device: String = caps[2].to_string();
-            let mac_address = caps[3].to_string();
-            port_data.push(HardwarePort::new(portname, device, mac_address)?)
-        }
+        let ports = parse_hardware_ports(&stdout)
+            .into_iter()
+            .map(|(name, device, mac_address)| HardwarePort::new(name, device, mac_address))
+            .collect::<Result<Vec<_>, _>>()?;
 
-        //HardwarePortList::sort_by_service_order(&mut port_data);
-        Ok(Self { ports: port_data })
+        Ok(Self { ports })
     }
 
     /// Re-order ports to match the network service priority set in System Settings.
@@ -46,10 +71,6 @@ impl HardwarePortList {
     /// are placed at the end by assigning them `usize::MAX` as their sort key.
     pub fn in_service_order(mut self) -> Self {
         fn get_service_order() -> HashMap<String, usize> {
-            // Returns a hash mapping port names to service order
-            // e.g.  "en7" -> 0, "en8" -> 1, "WiFi" -> 3
-            // Used to sort ports for printing
-            //
             // uses the shell command:
             //    networksetup -listnetworkserviceorder | grep Device
             //
@@ -73,21 +94,7 @@ impl HardwarePortList {
             networksetup_child.wait().unwrap();
             let result = str::from_utf8(&output.stdout).unwrap();
 
-            //println!("{}", result);
-            let mut service_order: HashMap<String, usize> = HashMap::new();
-            for (i, line) in result.lines().enumerate() {
-                // remove trailing ')'
-                let mut device: &str = line
-                    .strip_suffix(')')
-                    .expect("no ) at end of serviceorder line!");
-                device = device
-                    .split_ascii_whitespace()
-                    .last()
-                    .expect("Couldn't split on whitespace?");
-                service_order.insert(device.to_string(), i);
-            }
-
-            service_order
+            parse_service_order(result)
         }
 
         let services_in_order = get_service_order();
@@ -137,46 +144,46 @@ mod tests {
         }
     }
 
-    fn port_regex() -> Regex {
-        Regex::new(
-            r"Hardware Port: ([^\r\n]*)\r?\nDevice: ([^\r\n]*)\r?\nEthernet Address: ([^\r\n]*)\r?\n\r?\n",
-        )
-        .unwrap()
-    }
-
     #[test]
-    fn test_regex_parses_lf() {
+    fn test_parse_hardware_ports_lf() {
         let input = "Hardware Port: Wi-Fi\nDevice: en0\nEthernet Address: a1:b2:c3:d4:e5:f6\n\n";
-        let caps = port_regex()
-            .captures(input)
-            .expect("regex should match LF input");
-        assert_eq!(&caps[1], "Wi-Fi");
-        assert_eq!(&caps[2], "en0");
-        assert_eq!(&caps[3], "a1:b2:c3:d4:e5:f6");
+        let ports = parse_hardware_ports(input);
+        assert_eq!(ports.len(), 1);
+        assert_eq!(ports[0], ("Wi-Fi".to_string(), "en0".to_string(), "a1:b2:c3:d4:e5:f6".to_string()));
     }
 
     #[test]
-    fn test_regex_parses_crlf() {
+    fn test_parse_hardware_ports_crlf() {
         let input =
             "Hardware Port: Wi-Fi\r\nDevice: en0\r\nEthernet Address: a1:b2:c3:d4:e5:f6\r\n\r\n";
-        let caps = port_regex()
-            .captures(input)
-            .expect("regex should match CRLF input");
-        assert_eq!(&caps[1], "Wi-Fi");
-        assert_eq!(&caps[2], "en0");
-        assert_eq!(&caps[3], "a1:b2:c3:d4:e5:f6");
+        let ports = parse_hardware_ports(input);
+        assert_eq!(ports.len(), 1);
+        assert_eq!(ports[0], ("Wi-Fi".to_string(), "en0".to_string(), "a1:b2:c3:d4:e5:f6".to_string()));
     }
 
     #[test]
-    fn test_regex_parses_multiple_ports() {
+    fn test_parse_hardware_ports_multiple() {
         let input = concat!(
             "Hardware Port: Wi-Fi\nDevice: en0\nEthernet Address: a1:b2:c3:d4:e5:f6\n\n",
             "Hardware Port: Ethernet\nDevice: en1\nEthernet Address: 11:22:33:44:55:66\n\n",
         );
-        let matches: Vec<_> = port_regex().captures_iter(input).collect();
-        assert_eq!(matches.len(), 2);
-        assert_eq!(&matches[0][2], "en0");
-        assert_eq!(&matches[1][2], "en1");
+        let ports = parse_hardware_ports(input);
+        assert_eq!(ports.len(), 2);
+        assert_eq!(ports[0].1, "en0");
+        assert_eq!(ports[1].1, "en1");
+    }
+
+    #[test]
+    fn test_parse_service_order() {
+        let input = concat!(
+            "(Hardware Port: Thunderbolt Ethernet Slot 1, Device: en7)\n",
+            "(Hardware Port: Thunderbolt Ethernet Slot 0, Device: en8)\n",
+            "(Hardware Port: Wi-Fi, Device: en0)\n",
+        );
+        let order = parse_service_order(input);
+        assert_eq!(order.get("en7"), Some(&0));
+        assert_eq!(order.get("en8"), Some(&1));
+        assert_eq!(order.get("en0"), Some(&2));
     }
 
     #[test]
