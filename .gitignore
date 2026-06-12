@@ -1,5 +1,7 @@
 /target
-docs/
+docs/*
+!docs/images/
+!docs/images/**
 .DS_Store
 .claude/worktrees/
 .claude/settings.local.json
