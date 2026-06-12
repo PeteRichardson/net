@@ -1,3 +1,5 @@
+//! Discovery, ordering, and filtering of the full set of hardware network ports.
+
 use crate::hardware_port::HardwarePort;
 use regex::Regex;
 use std::collections::HashMap;
@@ -32,15 +34,16 @@ fn parse_hardware_ports(stdout: &str) -> Vec<(String, String, String)> {
 fn parse_service_order(output: &str) -> HashMap<String, usize> {
     let mut service_order: HashMap<String, usize> = HashMap::new();
     for (i, line) in output.lines().enumerate() {
-        // remove trailing ')'
-        let mut device: &str = line
+        // Each line looks like "(Hardware Port: Wi-Fi, Device: en0)"; strip the
+        // trailing ')' and take the last whitespace-separated token to get "en0".
+        // Lines that don't match this format are skipped rather than panicking,
+        // since this is parsing external command output.
+        let device = line
             .strip_suffix(')')
-            .expect("no ) at end of serviceorder line!");
-        device = device
-            .split_ascii_whitespace()
-            .last()
-            .expect("Couldn't split on whitespace?");
-        service_order.insert(device.to_string(), i);
+            .and_then(|s| s.split_ascii_whitespace().last());
+        if let Some(device) = device {
+            service_order.insert(device.to_string(), i);
+        }
     }
     service_order
 }
@@ -72,6 +75,8 @@ impl HardwarePortList {
     /// Ports absent from the service order (e.g. virtual or inactive interfaces)
     /// are placed at the end by assigning them `usize::MAX` as their sort key.
     pub fn in_service_order(mut self) -> Self {
+        // Nested helper: only used here, and kept infallible (panics on
+        // failure) since `in_service_order` itself returns `Self`, not `Result`.
         fn get_service_order() -> HashMap<String, usize> {
             // uses the shell command: networksetup -listnetworkserviceorder
             //
@@ -181,6 +186,19 @@ mod tests {
         assert_eq!(order.get("en7"), Some(&0));
         assert_eq!(order.get("en8"), Some(&1));
         assert_eq!(order.get("en0"), Some(&2));
+    }
+
+    #[test]
+    fn test_parse_service_order_skips_malformed_lines() {
+        let input = concat!(
+            "(Hardware Port: Wi-Fi, Device: en0)\n",
+            "not a valid line\n",
+            "(Hardware Port: Ethernet, Device: en1)\n",
+        );
+        let order = parse_service_order(input);
+        assert_eq!(order.len(), 2);
+        assert_eq!(order.get("en0"), Some(&0));
+        assert_eq!(order.get("en1"), Some(&2));
     }
 
     #[test]
