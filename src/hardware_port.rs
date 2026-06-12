@@ -1,3 +1,5 @@
+//! A single network hardware port and the system queries used to populate it.
+
 use std::error::Error;
 use std::process::{Command, Stdio};
 use std::str;
@@ -88,6 +90,8 @@ impl HardwarePort {
 /// `ip` is consulted only for the `auto` branch: an `auto`-negotiated interface
 /// with no IP address is treated as disconnected and returns `""`.
 fn map_speed_string(ifconfig_output: &str, ip: &str) -> &'static str {
+    // Order matters: e.g. "1000" is a substring-match away from "100", so the
+    // larger/more-specific speeds must be checked first.
     if ifconfig_output.contains("10G") {
         "10GbE"
     } else if ifconfig_output.contains("5000") {

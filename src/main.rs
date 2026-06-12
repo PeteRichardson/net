@@ -1,3 +1,5 @@
+//! `net`: list macOS network hardware ports with their IP, speed, and MAC address.
+
 use clap::Parser;
 use net::HardwarePortList;
 use std::error::Error;
@@ -6,6 +8,7 @@ use tabled::{
     settings::{Alignment, Color, Style, object::Columns, themes::Colorization},
 };
 
+/// Command-line options for `net`.
 #[derive(Parser, Debug, Clone)]
 #[command(version, about)]
 struct Config {
