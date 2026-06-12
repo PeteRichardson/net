@@ -1,6 +1,6 @@
 //! A single network hardware port and the system queries used to populate it.
 
-use std::error::Error;
+use crate::error::NetError;
 use std::process::{Command, Stdio};
 use std::str;
 use tabled::Tabled;
@@ -45,7 +45,7 @@ impl HardwarePort {
 
     /// Query the live system for this port's current IP address and link
     /// speed, and store them on `self`.
-    pub(crate) fn query_network_state(&mut self) -> Result<(), Box<dyn Error>> {
+    pub(crate) fn query_network_state(&mut self) -> Result<(), NetError> {
         self.ip_address = HardwarePort::get_ipaddr(&self.device)?;
         self.speed = HardwarePort::get_speed(&self.device, &self.ip_address)?;
         Ok(())
@@ -55,7 +55,7 @@ impl HardwarePort {
     /// string if the interface has no address.
     ///
     /// Delegates to `ipconfig getifaddr <device>`.
-    fn get_ipaddr(device: &String) -> Result<String, std::io::Error> {
+    fn get_ipaddr(device: &String) -> Result<String, NetError> {
         //ipconfig getifaddr {device}
         let output = Command::new("ipconfig")
             .arg("getifaddr")
@@ -70,7 +70,7 @@ impl HardwarePort {
     /// Parses the `media` line from `ifconfig <device>`. When the interface
     /// reports `auto` and an IP is present, returns `"auto"` because the
     /// negotiated rate is not accessible without location-services permission.
-    fn get_speed(device: &String, ip: &str) -> Result<String, Box<dyn Error>> {
+    fn get_speed(device: &String, ip: &str) -> Result<String, NetError> {
         let output = Command::new("ifconfig")
             .arg(device)
             .stderr(Stdio::null())

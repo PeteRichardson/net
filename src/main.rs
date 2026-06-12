@@ -1,8 +1,7 @@
 //! `net`: list macOS network hardware ports with their IP, speed, and MAC address.
 
 use clap::Parser;
-use net::HardwarePortList;
-use std::error::Error;
+use net::{HardwarePortList, NetError};
 use tabled::{
     Table,
     settings::{Alignment, Color, Style, object::Columns, themes::Colorization},
@@ -21,7 +20,7 @@ struct Config {
 ///
 /// Each column is assigned a distinct foreground colour; the speed column
 /// (index 3) is right-aligned because it contains fixed-width numeric strings.
-fn print_table(data: HardwarePortList) -> Result<(), Box<dyn Error>> {
+fn print_table(data: HardwarePortList) {
     let mut table = Table::new(data.ports);
     table
         .with(Style::rounded())
@@ -35,15 +34,15 @@ fn print_table(data: HardwarePortList) -> Result<(), Box<dyn Error>> {
         .modify(Columns::new(3..4), Alignment::right());
 
     println!("{}", table);
-    Ok(())
 }
 
 /// Entry point: parse CLI flags, collect and sort hardware ports, then display them.
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), NetError> {
     let config = Config::parse();
 
     let hardware_ports = HardwarePortList::new()?
-        .in_service_order()
+        .in_service_order()?
         .filter_ports(!config.all_ports); // filter to active ports only, unless -all-ports
-    print_table(hardware_ports)
+    print_table(hardware_ports);
+    Ok(())
 }

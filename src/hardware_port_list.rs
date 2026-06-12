@@ -1,9 +1,9 @@
 //! Discovery, ordering, and filtering of the full set of hardware network ports.
 
+use crate::error::NetError;
 use crate::hardware_port::HardwarePort;
 use regex::Regex;
 use std::collections::HashMap;
-use std::error::Error;
 use std::process::Command;
 use std::str;
 
@@ -54,7 +54,7 @@ impl HardwarePortList {
     ///
     /// The returned list is in the arbitrary order that `networksetup` emits, not
     /// service-preference order; call `in_service_order()` to sort before display.
-    pub fn new() -> Result<Self, Box<dyn Error>> {
+    pub fn new() -> Result<Self, NetError> {
         let output = Command::new("networksetup")
             .arg("-listallhardwareports")
             .output()?;
@@ -74,10 +74,9 @@ impl HardwarePortList {
     ///
     /// Ports absent from the service order (e.g. virtual or inactive interfaces)
     /// are placed at the end by assigning them `usize::MAX` as their sort key.
-    pub fn in_service_order(mut self) -> Self {
-        // Nested helper: only used here, and kept infallible (panics on
-        // failure) since `in_service_order` itself returns `Self`, not `Result`.
-        fn get_service_order() -> HashMap<String, usize> {
+    pub fn in_service_order(mut self) -> Result<Self, NetError> {
+        // Nested helper: only used here.
+        fn get_service_order() -> Result<HashMap<String, usize>, NetError> {
             // uses the shell command: networksetup -listnetworkserviceorder
             //
             // which has sample output containing lines like:
@@ -87,19 +86,18 @@ impl HardwarePortList {
             //      (Hardware Port: Wi-Fi, Device: en0)
             let output = Command::new("networksetup")
                 .arg("-listnetworkserviceorder")
-                .output()
-                .unwrap();
-            let stdout = str::from_utf8(&output.stdout).unwrap();
+                .output()?;
+            let stdout = str::from_utf8(&output.stdout)?;
             let device_lines: String = stdout
                 .lines()
                 .filter(|line| line.contains("Device"))
                 .collect::<Vec<_>>()
                 .join("\n");
 
-            parse_service_order(&device_lines)
+            Ok(parse_service_order(&device_lines))
         }
 
-        let services_in_order = get_service_order();
+        let services_in_order = get_service_order()?;
         for port in &mut *self.ports {
             if services_in_order.contains_key(&port.device) {
                 port.service_order = services_in_order[&port.device];
@@ -110,7 +108,7 @@ impl HardwarePortList {
         }
 
         self.ports.sort_by_key(|d1| d1.service_order);
-        self
+        Ok(self)
     }
 
     /// Optionally remove ports that have no IP address assigned.
