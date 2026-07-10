@@ -1,8 +1,7 @@
 //! A single network hardware port and the system queries used to populate it.
 
+use crate::command::run_command_allow_failure;
 use crate::error::NetError;
-use std::process::{Command, Stdio};
-use std::str;
 use tabled::Tabled;
 
 /// Represents a macOS hardware network port and its current network state.
@@ -54,14 +53,12 @@ impl HardwarePort {
     /// Return the IPv4 address currently assigned to `device`, or an empty
     /// string if the interface has no address.
     ///
-    /// Delegates to `ipconfig getifaddr <device>`.
-    fn get_ipaddr(device: &String) -> Result<String, NetError> {
-        //ipconfig getifaddr {device}
-        let output = Command::new("ipconfig")
-            .arg("getifaddr")
-            .arg(device)
-            .output()?;
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    /// Delegates to `ipconfig getifaddr <device>`, which exits nonzero when
+    /// the interface has no address — a normal state, so that case is
+    /// deliberately folded into the empty-string result rather than an error.
+    fn get_ipaddr(device: &str) -> Result<String, NetError> {
+        let output = run_command_allow_failure("ipconfig", &["getifaddr", device])?;
+        Ok(output.trim().to_string())
     }
 
     /// Return a human-readable link-speed string for `device` (e.g. `"1GbE"`,
@@ -70,12 +67,10 @@ impl HardwarePort {
     /// Parses the `media` line from `ifconfig <device>`. When the interface
     /// reports `auto` and an IP is present, returns `"auto"` because the
     /// negotiated rate is not accessible without location-services permission.
-    fn get_speed(device: &String, ip: &str) -> Result<String, NetError> {
-        let output = Command::new("ifconfig")
-            .arg(device)
-            .stderr(Stdio::null())
-            .output()?;
-        let stdout = str::from_utf8(&output.stdout)?;
+    fn get_speed(device: &str, ip: &str) -> Result<String, NetError> {
+        // `ifconfig` exits nonzero for devices it doesn't recognize (some
+        // entries from networksetup); treat that as "no speed", not an error.
+        let stdout = run_command_allow_failure("ifconfig", &[device])?;
         let media_lines: String = stdout
             .lines()
             .filter(|line| line.contains("media"))

@@ -1,5 +1,8 @@
 /target
 docs/*
+!docs/reviews/
+docs/reviews/*
+!docs/reviews/PROJECT_REVIEW.md
 !docs/images/
 !docs/images/**
 .DS_Store

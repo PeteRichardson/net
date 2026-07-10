@@ -4,6 +4,7 @@
 //! and [`HardwarePortList::filter_ports`] shape the list for display, and each
 //! [`HardwarePort`] holds one port's identity and live network state.
 
+pub(crate) mod command;
 pub mod error;
 pub mod hardware_port;
 pub mod hardware_port_list;

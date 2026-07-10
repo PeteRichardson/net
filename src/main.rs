@@ -2,12 +2,14 @@
 
 use clap::Parser;
 use net::{HardwarePortList, NetError};
+use std::process::ExitCode;
 use tabled::{
     Table,
     settings::{Alignment, Color, Style, object::Columns, themes::Colorization},
 };
 
-/// Command-line options for `net`.
+/// Display macOS network hardware ports with IP address, link speed, and
+/// MAC address, sorted by network service order.
 #[derive(Parser, Debug, Clone)]
 #[command(version, about)]
 struct Config {
@@ -36,13 +38,25 @@ fn print_table(data: HardwarePortList) {
     println!("{}", table);
 }
 
+/// Collect, sort, and filter the hardware ports to display.
+fn collect_ports(config: &Config) -> Result<HardwarePortList, NetError> {
+    Ok(HardwarePortList::new()?
+        .in_service_order()?
+        .filter_ports(!config.all_ports)) // filter to active ports only, unless --all-ports
+}
+
 /// Entry point: parse CLI flags, collect and sort hardware ports, then display them.
-fn main() -> Result<(), NetError> {
+fn main() -> ExitCode {
     let config = Config::parse();
 
-    let hardware_ports = HardwarePortList::new()?
-        .in_service_order()?
-        .filter_ports(!config.all_ports); // filter to active ports only, unless -all-ports
-    print_table(hardware_ports);
-    Ok(())
+    match collect_ports(&config) {
+        Ok(ports) => {
+            print_table(ports);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("net: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }

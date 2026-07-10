@@ -1,11 +1,10 @@
 //! Discovery, ordering, and filtering of the full set of hardware network ports.
 
+use crate::command::run_command;
 use crate::error::NetError;
 use crate::hardware_port::HardwarePort;
 use regex::Regex;
 use std::collections::HashMap;
-use std::process::Command;
-use std::str;
 
 /// An ordered collection of hardware network ports discovered on this machine.
 pub struct HardwarePortList {
@@ -55,10 +54,7 @@ impl HardwarePortList {
     /// The returned list is in the arbitrary order that `networksetup` emits, not
     /// service-preference order; call `in_service_order()` to sort before display.
     pub fn new() -> Result<Self, NetError> {
-        let output = Command::new("networksetup")
-            .arg("-listallhardwareports")
-            .output()?;
-        let stdout = String::from_utf8(output.stdout)?;
+        let stdout = run_command("networksetup", &["-listallhardwareports"])?;
 
         let mut ports = Vec::new();
         for (name, device, mac_address) in parse_hardware_ports(&stdout) {
@@ -84,10 +80,7 @@ impl HardwarePortList {
             //      (Hardware Port: Thunderbolt Ethernet Slot 0, Device: en8)
             //      (Hardware Port: Thunderbolt Bridge, Device: bridge0)
             //      (Hardware Port: Wi-Fi, Device: en0)
-            let output = Command::new("networksetup")
-                .arg("-listnetworkserviceorder")
-                .output()?;
-            let stdout = str::from_utf8(&output.stdout)?;
+            let stdout = run_command("networksetup", &["-listnetworkserviceorder"])?;
             let device_lines: String = stdout
                 .lines()
                 .filter(|line| line.contains("Device"))
