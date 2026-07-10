@@ -80,7 +80,8 @@ mod tests {
     fn test_run_command_errors_when_binary_missing() {
         let err = run_command("definitely-not-a-real-command-xyz", &[]).unwrap_err();
         assert!(
-            err.to_string().contains("definitely-not-a-real-command-xyz"),
+            err.to_string()
+                .contains("definitely-not-a-real-command-xyz"),
             "error should name the missing command: {err}"
         );
     }

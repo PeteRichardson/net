@@ -22,7 +22,13 @@ fn parse_hardware_ports(stdout: &str) -> Vec<(String, String, String)> {
     )
     .unwrap();
     re.captures_iter(stdout)
-        .map(|caps| (caps[1].to_string(), caps[2].to_string(), caps[3].to_string()))
+        .map(|caps| {
+            (
+                caps[1].to_string(),
+                caps[2].to_string(),
+                caps[3].to_string(),
+            )
+        })
         .collect()
 }
 
@@ -103,21 +109,15 @@ impl HardwarePortList {
         Ok(self)
     }
 
-    /// Optionally remove ports that have no IP address assigned.
-    ///
-    /// When `active_only` is `true`, only ports with a non-empty `ip_address`
-    /// are retained. When `false`, all ports are returned unchanged.
-    pub fn filter_ports(self, active_only: bool) -> Self {
-        if active_only {
-            let ports = self
-                .ports
-                .into_iter()
-                .filter(|p| !(p.ip_address).is_empty())
-                .collect();
-            Self { ports }
-        } else {
-            self
-        }
+    /// Keep only ports that have an IP address assigned.
+    #[must_use]
+    pub fn active_only(self) -> Self {
+        let ports = self
+            .ports
+            .into_iter()
+            .filter(|p| p.ip_address.is_some())
+            .collect();
+        Self { ports }
     }
 }
 
@@ -125,11 +125,11 @@ impl HardwarePortList {
 mod tests {
     use super::*;
 
-    fn make_port(device: &str, ip: &str) -> HardwarePort {
+    fn make_port(device: &str, ip: Option<&str>) -> HardwarePort {
         HardwarePort {
             name: device.to_string(),
             device: device.to_string(),
-            ip_address: ip.to_string(),
+            ip_address: ip.map(str::to_string),
             mac_address: String::new(),
             speed: String::new(),
             service_order: 0,
@@ -141,7 +141,14 @@ mod tests {
         let input = "Hardware Port: Wi-Fi\nDevice: en0\nEthernet Address: a1:b2:c3:d4:e5:f6\n\n";
         let ports = parse_hardware_ports(input);
         assert_eq!(ports.len(), 1);
-        assert_eq!(ports[0], ("Wi-Fi".to_string(), "en0".to_string(), "a1:b2:c3:d4:e5:f6".to_string()));
+        assert_eq!(
+            ports[0],
+            (
+                "Wi-Fi".to_string(),
+                "en0".to_string(),
+                "a1:b2:c3:d4:e5:f6".to_string()
+            )
+        );
     }
 
     #[test]
@@ -150,7 +157,14 @@ mod tests {
             "Hardware Port: Wi-Fi\r\nDevice: en0\r\nEthernet Address: a1:b2:c3:d4:e5:f6\r\n\r\n";
         let ports = parse_hardware_ports(input);
         assert_eq!(ports.len(), 1);
-        assert_eq!(ports[0], ("Wi-Fi".to_string(), "en0".to_string(), "a1:b2:c3:d4:e5:f6".to_string()));
+        assert_eq!(
+            ports[0],
+            (
+                "Wi-Fi".to_string(),
+                "en0".to_string(),
+                "a1:b2:c3:d4:e5:f6".to_string()
+            )
+        );
     }
 
     #[test]
@@ -192,29 +206,23 @@ mod tests {
     }
 
     #[test]
-    fn test_filter_ports_removes_inactive() {
+    fn test_active_only_removes_ports_without_ip() {
         let list = HardwarePortList {
-            ports: vec![make_port("en0", "192.168.1.1"), make_port("en1", "")],
+            ports: vec![
+                make_port("en0", Some("192.168.1.1")),
+                make_port("en1", None),
+            ],
         };
-        let filtered = list.filter_ports(true);
+        let filtered = list.active_only();
         assert_eq!(filtered.ports.len(), 1);
         assert_eq!(filtered.ports[0].device, "en0");
     }
 
     #[test]
-    fn test_filter_ports_keeps_all() {
+    fn test_active_only_all_inactive_returns_empty() {
         let list = HardwarePortList {
-            ports: vec![make_port("en0", "192.168.1.1"), make_port("en1", "")],
+            ports: vec![make_port("en0", None), make_port("en1", None)],
         };
-        let filtered = list.filter_ports(false);
-        assert_eq!(filtered.ports.len(), 2);
-    }
-
-    #[test]
-    fn test_filter_ports_all_inactive_returns_empty() {
-        let list = HardwarePortList {
-            ports: vec![make_port("en0", ""), make_port("en1", "")],
-        };
-        assert!(list.filter_ports(true).ports.is_empty());
+        assert!(list.active_only().ports.is_empty());
     }
 }
