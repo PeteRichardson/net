@@ -23,6 +23,22 @@ fn help_describes_the_tool() {
     );
 }
 
+/// When stdout is not a terminal (here: a pipe), the table must be plain
+/// text — no ANSI escape codes to pollute `net | grep ...` or `net > file`.
+#[test]
+fn piped_output_has_no_ansi_escapes() {
+    let out = Command::new(env!("CARGO_BIN_EXE_net"))
+        .output()
+        .expect("failed to run net binary");
+
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stdout.contains('\x1b'),
+        "piped output should have no ANSI escapes, got: {stdout:?}"
+    );
+}
+
 /// With an empty PATH, `networksetup` cannot be found: the tool must exit
 /// nonzero and report the failure in its user-facing `Display` form
 /// (`net: command failed: ...`), not as a `Debug` dump.
