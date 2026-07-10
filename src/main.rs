@@ -52,9 +52,19 @@ fn print_table(data: HardwarePortList) {
 
 /// Collect, sort, and filter the hardware ports to display.
 fn collect_ports(config: &Config) -> Result<HardwarePortList, NetError> {
-    Ok(HardwarePortList::new()?
-        .in_service_order()?
-        .filter_ports(!config.all_ports)) // filter to active ports only, unless --all-ports
+    let mut list = HardwarePortList::new()?.in_service_order()?;
+    if !config.all_ports {
+        list = list.active_only();
+    }
+    Ok(list)
+}
+
+/// Return the hint to print when there is nothing to show: the port list is
+/// empty because inactive ports were filtered out and `--all-ports` was not
+/// passed. Returns `None` when the user already asked for all ports.
+fn no_ports_hint(config: &Config, ports: &HardwarePortList) -> Option<&'static str> {
+    (ports.ports.is_empty() && !config.all_ports)
+        .then_some("no ports with IP addresses; use --all-ports to see all")
 }
 
 /// Entry point: parse CLI flags, collect and sort hardware ports, then display them.
@@ -63,6 +73,9 @@ fn main() -> ExitCode {
 
     match collect_ports(&config) {
         Ok(ports) => {
+            if let Some(hint) = no_ports_hint(&config, &ports) {
+                eprintln!("net: {hint}");
+            }
             print_table(ports);
             ExitCode::SUCCESS
         }
@@ -70,5 +83,32 @@ fn main() -> ExitCode {
             eprintln!("net: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config(all_ports: bool) -> Config {
+        Config { all_ports }
+    }
+
+    fn empty_list() -> HardwarePortList {
+        HardwarePortList { ports: vec![] }
+    }
+
+    #[test]
+    fn test_hint_shown_when_filtered_list_is_empty() {
+        let hint = no_ports_hint(&config(false), &empty_list());
+        assert_eq!(
+            hint,
+            Some("no ports with IP addresses; use --all-ports to see all")
+        );
+    }
+
+    #[test]
+    fn test_no_hint_with_all_ports_flag() {
+        assert_eq!(no_ports_hint(&config(true), &empty_list()), None);
     }
 }
