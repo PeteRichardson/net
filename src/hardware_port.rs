@@ -9,7 +9,7 @@ use tabled::Tabled;
 /// Fields are populated from `networksetup -listallhardwareports` and
 /// supplemental `ipconfig` / `ifconfig` queries. `service_order` is excluded
 /// from table output and is used only to sort ports for display.
-#[derive(Tabled, Default)]
+#[derive(Tabled)]
 #[tabled(rename_all = "PascalCase")]
 pub struct HardwarePort {
     pub(crate) name: String,

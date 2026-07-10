@@ -91,13 +91,12 @@ impl HardwarePortList {
         }
 
         let services_in_order = get_service_order()?;
-        for port in &mut *self.ports {
-            if services_in_order.contains_key(&port.device) {
-                port.service_order = services_in_order[&port.device];
-            } else {
-                // Ports not present in the service order list sort to the bottom.
-                port.service_order = usize::MAX;
-            }
+        for port in &mut self.ports {
+            // Ports not present in the service order list sort to the bottom.
+            port.service_order = services_in_order
+                .get(&port.device)
+                .copied()
+                .unwrap_or(usize::MAX);
         }
 
         self.ports.sort_by_key(|d1| d1.service_order);
